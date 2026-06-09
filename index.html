@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>리듬 게임</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#0a0a1a;
+  display:flex; justify-content:center; align-items:center;
+  min-height:100vh; font-family:'Arial',sans-serif; color:white;
+  overflow:hidden;
+}
+
+/* ── 공통 버튼 ── */
+.btn {
+  padding:10px 24px; border:none; border-radius:20px;
+  font-size:0.95rem; cursor:pointer; font-weight:bold;
+  transition:transform .1s, filter .1s;
+}
+.btn:hover { filter:brightness(1.2); transform:scale(1.04); }
+.btn-purple { background:linear-gradient(135deg,#7c3aed,#a855f7); color:#fff; }
+.btn-green  { background:linear-gradient(135deg,#15803d,#22c55e); color:#fff; }
+.btn-red    { background:linear-gradient(135deg,#b91c1c,#ef4444); color:#fff; }
+.btn-gray   { background:#334155; color:#cbd5e1; }
+
+/* ── 오버레이 ── */
+#overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,.88);
+  display:flex; flex-direction:column; align-items:center;
+  justify-content:center; gap:14px; z-index:200;
+}
+#overlay h1 { font-size:2rem; text-shadow:0 0 20px #a855f7; }
+#overlay p  { color:#94a3b8; font-size:.9rem; text-align:center; line-height:1.7; }
+
+/* 파일 드롭존 */
+#dropzone {
+  width:320px; height:90px; border:2px dashed #4f46e5;
+  border-radius:12px; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:6px;
+  cursor:pointer; transition:background .2s; font-size:.9rem; color:#818cf8;
+}
+#dropzone:hover, #dropzone.drag-over { background:rgba(79,70,229,.15); }
+#dropzone input { display:none; }
+#dropzone span  { font-size:1.8rem; }
+
+/* 채보 섹션 */
+#chart-section { width:340px; }
+#chart-section label { font-size:.8rem; color:#94a3b8; }
+#chart-textarea {
+  width:100%; height:110px; background:#1e293b; color:#e2e8f0;
+  border:1px solid #334155; border-radius:8px; padding:8px;
+  font-size:.8rem; font-family:monospace; resize:vertical;
+  margin-top:4px;
+}
+
+#song-name { color:#a78bfa; font-size:1rem; font-weight:bold; }
+
+/* ── 게임 화면 ── */
+#game-wrap {
+  position:relative; width:440px; height:620px; display:none;
+}
+
+#hud {
+  position:absolute; top:0; left:0; right:0; height:64px;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 16px; background:linear-gradient(to bottom,#111,transparent);
+  z-index:10;
+}
+#score-el  { font-size:1.4rem; font-weight:bold; }
+#combo-el  { font-size:1.1rem; color:#fbbf24; font-weight:bold; min-width:110px; text-align:center;}
+#life-el   { font-size:1rem; color:#f87171; }
+
+#prog-bar  { position:absolute; top:62px; left:10px; right:10px; height:3px; background:rgba(255,255,255,.1); border-radius:2px; z-index:10; }
+#prog-fill { height:100%; background:linear-gradient(to right,#7c3aed,#a855f7); border-radius:2px; width:0; }
+
+#lanes {
+  position:absolute; top:68px; bottom:96px;
+  left:10px; right:10px; display:flex; gap:4px;
+}
+.lane {
+  flex:1; position:relative; border-radius:6px;
+  background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07);
+  overflow:hidden;
+}
+.lane[data-key="d"] { border-color:rgba(239,68,68,.3); }
+.lane[data-key="f"] { border-color:rgba(59,130,246,.3); }
+.lane[data-key="j"] { border-color:rgba(34,197,94,.3); }
+.lane[data-key="k"] { border-color:rgba(234,179,8,.3); }
+.lane.active        { background:rgba(255,255,255,.09); }
+
+.note {
+  position:absolute; left:4px; right:4px; height:28px;
+  border-radius:6px; top:-30px;
+}
+.lane[data-key="d"] .note { background:#ef4444; box-shadow:0 0 8px #ef4444; }
+.lane[data-key="f"] .note { background:#3b82f6; box-shadow:0 0 8px #3b82f6; }
+.lane[data-key="j"] .note { background:#22c55e; box-shadow:0 0 8px #22c55e; }
+.lane[data-key="k"] .note { background:#eab308; box-shadow:0 0 8px #eab308; }
+
+#hitline {
+  position:absolute; bottom:96px; left:10px; right:10px;
+  height:3px; background:rgba(255,255,255,.2); z-index:5;
+}
+
+#keys-row {
+  position:absolute; bottom:10px; left:10px; right:10px;
+  display:flex; gap:4px; height:76px;
+}
+.key-btn {
+  flex:1; border-radius:8px; display:flex; align-items:center;
+  justify-content:center; font-size:1.3rem; font-weight:bold;
+  border:2px solid; transition:filter .05s,transform .05s; cursor:pointer;
+}
+.key-btn[data-key="d"] { background:rgba(239,68,68,.2);  border-color:#ef4444; color:#ef4444; }
+.key-btn[data-key="f"] { background:rgba(59,130,246,.2); border-color:#3b82f6; color:#3b82f6; }
+.key-btn[data-key="j"] { background:rgba(34,197,94,.2);  border-color:#22c55e; color:#22c55e; }
+.key-btn[data-key="k"] { background:rgba(234,179,8,.2);  border-color:#eab308; color:#eab308; }
+.key-btn.pressed { filter:brightness(2.2); transform:scale(.91); }
+
+#judgment {
+  position:absolute; top:45%; left:50%; transform:translate(-50%,-50%);
+  font-size:1.8rem; font-weight:bold; pointer-events:none; z-index:20;
+  opacity:0; transition:opacity .08s; text-shadow:0 0 12px currentColor;
+}
+#judgment.show    { opacity:1; }
+#judgment.perfect { color:#f9a8d4; }
+#judgment.good    { color:#86efac; }
+#judgment.miss    { color:#fca5a5; }
+
+/* ── 녹화 모드 HUD ── */
+#rec-hud {
+  position:absolute; top:0; left:0; right:0; height:64px;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 16px; background:linear-gradient(to bottom,#111,transparent);
+  z-index:10; display:none;
+}
+#rec-time  { font-size:1.1rem; color:#f87171; font-weight:bold; }
+#rec-count { font-size:1rem; color:#fbbf24; }
+#rec-stop  { padding:6px 16px; font-size:.85rem; }
+
+.hit-particle {
+  position:absolute; width:7px; height:7px; border-radius:50%;
+  pointer-events:none; animation:part .4s ease-out forwards;
+}
+@keyframes part {
+  0%   { transform:translate(0,0) scale(1); opacity:1; }
+  100% { transform:translate(var(--dx),var(--dy)) scale(0); opacity:0; }
+}
+
+/* result */
+#result-grade { font-size:3.5rem; font-weight:bold; margin:4px 0; }
+#result-score { font-size:2rem; font-weight:bold; color:#a855f7; }
+#result-stats { color:#94a3b8; font-size:.85rem; line-height:1.8; text-align:center; }
+
+/* rec flash */
+#rec-flash {
+  position:absolute; inset:0; background:rgba(239,68,68,.1);
+  border-radius:4px; pointer-events:none; opacity:0; z-index:1;
+  transition:opacity .05s;
+}
+</style>
+</head>
+<body>
+
+<!-- ── 메인 오버레이 ── -->
+<div id="overlay">
+  <h1>🎵 리듬 게임</h1>
+
+  <!-- 파일 선택 -->
+  <div id="dropzone">
+    <span>🎵</span>
+    <div>클릭하거나 음악 파일을 드래그하세요</div>
+    <div style="font-size:.75rem;color:#64748b">MP3 · OGG · WAV</div>
+    <input type="file" id="file-input" accept="audio/*">
+  </div>
+  <div id="song-name">파일을 선택해주세요</div>
+
+  <!-- 채보 입력 -->
+  <div id="chart-section">
+    <label>
+      채보 (선택사항) — 비워두면 녹화 모드로 시작 &nbsp;
+      <span style="color:#4f46e5;cursor:pointer;font-size:.75rem" id="chart-help-btn">[형식 보기]</span>
+    </label>
+    <div id="chart-help" style="display:none;color:#64748b;font-size:.75rem;line-height:1.6;margin-top:4px">
+      각 줄: <code>시간(ms) 레인(0~3)</code> 또는 <code>시간(ms) 0101</code><br>
+      예) <code>500 0</code> → 0.5초에 D레인<br>
+      예) <code>1000 0011</code> → 1초에 J+K 동시<br>
+      <span style="color:#a78bfa">BPM 헬퍼: beat(n, bpm) 형식도 지원</span>
+    </div>
+    <textarea id="chart-textarea" placeholder="채보를 붙여넣거나 비워두세요"></textarea>
+  </div>
+
+  <div style="display:flex;gap:10px">
+    <button class="btn btn-purple" id="play-btn" disabled>▶ 플레이</button>
+    <button class="btn btn-green"  id="rec-btn"  disabled>⏺ 녹화 시작</button>
+  </div>
+  <p style="font-size:.78rem">D &nbsp;F &nbsp;J &nbsp;K 키 / 하단 버튼으로 조작</p>
+</div>
+
+<!-- ── 게임 화면 ── -->
+<div id="game-wrap">
+  <!-- 일반 HUD -->
+  <div id="hud">
+    <div id="score-el">0</div>
+    <div id="combo-el"></div>
+    <div id="life-el">❤❤❤❤❤</div>
+  </div>
+  <!-- 녹화 HUD -->
+  <div id="rec-hud">
+    <div id="rec-time">00:00</div>
+    <div id="rec-count">녹화된 노트: 0</div>
+    <button class="btn btn-red rec-stop-btn" id="rec-stop">■ 녹화 종료</button>
+  </div>
+
+  <div id="prog-bar"><div id="prog-fill"></div></div>
+
+  <div id="lanes">
+    <div class="lane" data-key="d"></div>
+    <div class="lane" data-key="f"></div>
+    <div class="lane" data-key="j"></div>
+    <div class="lane" data-key="k"></div>
+  </div>
+  <div id="rec-flash"></div>
+  <div id="hitline"></div>
+  <div id="judgment"></div>
+
+  <div id="keys-row">
+    <div class="key-btn" data-key="d">D</div>
+    <div class="key-btn" data-key="f">F</div>
+    <div class="key-btn" data-key="j">J</div>
+    <div class="key-btn" data-key="k">K</div>
+  </div>
+</div>
+
+<script>
+/* ════════════════════════════════════════════
+   상수 & 전역
+════════════════════════════════════════════ */
+const KEYS       = ['d','f','j','k'];
+const NOTE_SPEED = 4;      // px/frame
+const PERFECT_WIN = 36;
+const GOOD_WIN    = 66;
+
+let audioCtx  = null;
+let audioSrc  = null;       // AudioBuffer URL or ObjectURL
+let audioBuf  = null;       // decoded AudioBuffer
+let audioNode = null;       // AudioBufferSourceNode (playing)
+let audioStartWall = 0;     // performance.now() when audio started
+let songDuration = 0;       // ms
+
+let mode = 'idle';          // idle | play | record
+let song   = [];            // [{time, lane}]
+let recorded = [];          // [{time, lane}] while recording
+
+let activeNotes = [];       // {el, lane}
+let noteIndex   = 0;
+
+let score=0, combo=0, maxCombo=0, life=5;
+let counts={perfect:0,good:0,miss:0};
+let animId=null;
+
+/* ════════════════════════════════════════════
+   DOM refs
+════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+const overlay    = $('overlay');
+const gameWrap   = $('game-wrap');
+const hud        = $('hud');
+const recHud     = $('rec-hud');
+const scoreEl    = $('score-el');
+const comboEl    = $('combo-el');
+const lifeEl     = $('life-el');
+const progFill   = $('prog-fill');
+const judgEl     = $('judgment');
+const recTimeEl  = $('rec-time');
+const recCountEl = $('rec-count');
+const recFlash   = $('rec-flash');
+const songNameEl = $('song-name');
+const fileInput  = $('file-input');
+const dropzone   = $('dropzone');
+const playBtn    = $('play-btn');
+const recBtn     = $('rec-btn');
+const chartTA    = $('chart-textarea');
+const chartHelp  = $('chart-help');
+const chartHelpBtn=$('chart-help-btn');
+
+const laneEls   = {};
+const keyBtnEls = {};
+KEYS.forEach(k=>{
+  laneEls[k]   = document.querySelector(`.lane[data-key="${k}"]`);
+  keyBtnEls[k] = document.querySelector(`.key-btn[data-key="${k}"]`);
+});
+
+/* ════════════════════════════════════════════
+   채보 파서
+════════════════════════════════════════════ */
+function beat(n, bpm=128){ return (60000/bpm)*n; }
+
+function parseChart(text){
+  const notes=[];
+  text.split('\n').forEach(line=>{
+    line=line.trim();
+    if(!line || line.startsWith('//') || line.startsWith('#')) return;
+    const parts=line.split(/\s+/);
+    if(parts.length<2) return;
+    const t=parseFloat(parts[0]);
+    if(isNaN(t)) return;
+    const second=parts[1];
+    if(/^[01]{4}$/.test(second)){
+      // 비트맵 형식: "0110"
+      for(let i=0;i<4;i++) if(second[i]==='1') notes.push({time:t,lane:i});
+    } else {
+      const l=parseInt(second);
+      if(!isNaN(l)&&l>=0&&l<=3) notes.push({time:t,lane:l});
+    }
+  });
+  return notes.sort((a,b)=>a.time-b.time);
+}
+
+/* ════════════════════════════════════════════
+   오디오 로드
+════════════════════════════════════════════ */
+async function loadAudio(file){
+  audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  const buf = await file.arrayBuffer();
+  audioBuf  = await audioCtx.decodeAudioData(buf);
+  songDuration = audioBuf.duration * 1000;
+  songNameEl.textContent = '🎵 ' + file.name;
+  playBtn.disabled = false;
+  recBtn.disabled  = false;
+}
+
+function playAudio(){
+  if(audioNode){ try{audioNode.stop();}catch(e){} }
+  audioNode = audioCtx.createBufferSource();
+  audioNode.buffer = audioBuf;
+  audioNode.connect(audioCtx.destination);
+  audioStartWall = performance.now();
+  audioNode.start(0);
+}
+
+function stopAudio(){
+  if(audioNode){ try{audioNode.stop();}catch(e){} audioNode=null; }
+}
+
+function currentMs(){
+  return (performance.now() - audioStartWall);
+}
+
+/* ════════════════════════════════════════════
+   게임 - 플레이 모드
+════════════════════════════════════════════ */
+function startPlay(){
+  mode='play';
+  song = parseChart(chartTA.value.trim());
+  // 채보가 없으면 빈 채로 플레이 (음악만)
+  resetState();
+  showGame(false);
+  playAudio();
+  animId=requestAnimationFrame(playLoop);
+}
+
+function playLoop(now){
+  const elapsed = currentMs();
+  spawnNotes(elapsed);
+  moveNotes();
+  progFill.style.width = Math.min(100,(elapsed/songDuration)*100)+'%';
+  if(elapsed>=songDuration+1000 && activeNotes.length===0){
+    endGame('play'); return;
+  }
+  if(mode==='play') animId=requestAnimationFrame(playLoop);
+}
+
+/* ════════════════════════════════════════════
+   게임 - 녹화 모드
+════════════════════════════════════════════ */
+function startRecord(){
+  mode='record';
+  recorded=[];
+  resetState();
+  showGame(true);
+  playAudio();
+  animId=requestAnimationFrame(recLoop);
+}
+
+function recLoop(){
+  const elapsed=currentMs();
+  // 시각 피드백: 떨어지는 노트 표시
+  recorded.forEach(n=>{
+    // 이미 el 생성된 노트는 spawnNotes에서 처리
+  });
+  // spawn recorded notes as visual
+  spawnNotes(elapsed, recorded);
+  moveNotes();
+
+  const secs=Math.floor(elapsed/1000);
+  const ms=Math.floor((elapsed%1000)/10);
+  recTimeEl.textContent=`${String(Math.floor(secs/60)).padStart(2,'0')}:${String(secs%60).padStart(2,'0')}.${String(ms).padStart(2,'0')}`;
+  recCountEl.textContent=`녹화된 노트: ${recorded.length}`;
+
+  progFill.style.width=Math.min(100,(elapsed/songDuration)*100)+'%';
+
+  if(elapsed>=songDuration+500){ endRecord(); return; }
+  if(mode==='record') animId=requestAnimationFrame(recLoop);
+}
+
+function endRecord(){
+  stopAudio();
+  cancelAnimationFrame(animId);
+  mode='idle';
+
+  // 채보 텍스트로 내보내기
+  const lines=recorded.map(n=>`${Math.round(n.time)} ${n.lane}`).join('\n');
+  chartTA.value=lines;
+
+  // 게임 화면 → 오버레이
+  gameWrap.style.display='none';
+  overlay.style.display='flex';
+
+  alert(`녹화 완료! ${recorded.length}개 노트\n채보 칸에 저장되었습니다.\n이제 ▶ 플레이로 확인하세요.`);
+}
+
+/* ════════════════════════════════════════════
+   공통 게임 로직
+════════════════════════════════════════════ */
+function resetState(){
+  activeNotes=[]; noteIndex=0;
+  score=0; combo=0; maxCombo=0; life=5;
+  counts={perfect:0,good:0,miss:0};
+  progFill.style.width='0';
+  updateHUD();
+  // clear notes
+  KEYS.forEach(k=> laneEls[k].innerHTML='');
+}
+
+function showGame(isRec){
+  overlay.style.display='none';
+  gameWrap.style.display='block';
+  hud.style.display    = isRec ? 'none' : 'flex';
+  recHud.style.display = isRec ? 'flex' : 'none';
+}
+
+function laneH(){ return laneEls['d'].clientHeight; }
+
+function spawnNotes(elapsed, src){
+  const source = src || song;
+  const travel = (laneH() / NOTE_SPEED) * (1000/60);
+  while(noteIndex<source.length){
+    const n=source[noteIndex];
+    if(n.time - elapsed <= travel + 400){
+      spawnNote(n.lane);
+      noteIndex++;
+    } else break;
+  }
+}
+
+function spawnNote(laneIdx){
+  const key=KEYS[laneIdx];
+  const el=document.createElement('div');
+  el.className='note';
+  el.style.top='-30px';
+  laneEls[key].appendChild(el);
+  activeNotes.push({el,lane:laneIdx});
+}
+
+function moveNotes(){
+  const missLine=laneH()+30;
+  activeNotes=activeNotes.filter(n=>{
+    const top=parseFloat(n.el.style.top)+NOTE_SPEED;
+    n.el.style.top=top+'px';
+    if(top>missLine){
+      n.el.remove();
+      if(mode==='play') onMiss();
+      return false;
+    }
+    return true;
+  });
+}
+
+function onKey(key){
+  if(mode==='idle') return;
+  const laneIdx=KEYS.indexOf(key);
+  if(laneIdx<0) return;
+
+  // 녹화 모드
+  if(mode==='record'){
+    const t=currentMs();
+    recorded.push({time:t,lane:laneIdx});
+    // flash
+    recFlash.style.opacity='1';
+    setTimeout(()=>recFlash.style.opacity='0',60);
+    flashKey(key);
+    return;
+  }
+
+  // 플레이 모드
+  let best=null, bestDist=Infinity;
+  activeNotes.forEach(n=>{
+    if(n.lane!==laneIdx) return;
+    const bottom=parseFloat(n.el.style.top)+28;
+    const dist=Math.abs(bottom-laneH());
+    if(dist<bestDist){ bestDist=dist; best=n; }
+  });
+  if(!best) return;
+  if(bestDist>GOOD_WIN) return;
+
+  const jtype=bestDist<=PERFECT_WIN?'perfect':'good';
+  best.el.remove();
+  activeNotes=activeNotes.filter(n=>n!==best);
+  onHit(jtype,laneIdx);
+}
+
+function onHit(type,laneIdx){
+  counts[type]++;
+  combo++;
+  if(combo>maxCombo) maxCombo=combo;
+  const pts=type==='perfect'?300:100;
+  score+=pts*Math.min(combo,10);
+  showJudgment(type);
+  spawnParticles(laneIdx);
+  updateHUD();
+}
+
+function onMiss(){
+  counts.miss++;
+  combo=0;
+  life=Math.max(0,life-1);
+  showJudgment('miss');
+  updateHUD();
+  if(life===0){ endGame('play'); }
+}
+
+let judgTimer=null;
+function showJudgment(type){
+  judgEl.className='show '+type;
+  judgEl.textContent=type==='perfect'?'PERFECT!':type==='good'?'GOOD':'MISS';
+  clearTimeout(judgTimer);
+  judgTimer=setTimeout(()=>judgEl.classList.remove('show'),500);
+}
+
+function flashKey(key){
+  keyBtnEls[key]?.classList.add('pressed');
+  laneEls[key]?.classList.add('active');
+  setTimeout(()=>{
+    keyBtnEls[key]?.classList.remove('pressed');
+    laneEls[key]?.classList.remove('active');
+  },100);
+}
+
+function spawnParticles(laneIdx){
+  const key=KEYS[laneIdx];
+  const colors={d:'#ef4444',f:'#3b82f6',j:'#22c55e',k:'#eab308'};
+  for(let i=0;i<6;i++){
+    const p=document.createElement('div');
+    p.className='hit-particle';
+    p.style.background=colors[key];
+    p.style.bottom='10px'; p.style.left='50%';
+    const a=(Math.random()*360)*Math.PI/180;
+    const d=20+Math.random()*40;
+    p.style.setProperty('--dx',Math.cos(a)*d+'px');
+    p.style.setProperty('--dy',Math.sin(a)*d+'px');
+    laneEls[key].appendChild(p);
+    setTimeout(()=>p.remove(),420);
+  }
+}
+
+function updateHUD(){
+  scoreEl.textContent=score.toLocaleString();
+  comboEl.textContent=combo>=3?`${combo} COMBO`:'';
+  lifeEl.textContent='❤'.repeat(life)+'🖤'.repeat(5-life);
+}
+
+function endGame(src){
+  stopAudio();
+  cancelAnimationFrame(animId);
+  mode='idle';
+
+  const total=counts.perfect+counts.good+counts.miss;
+  const acc=total?((counts.perfect+counts.good*.5)/total*100).toFixed(1):100;
+  const grade=acc>=95?'S':acc>=85?'A':acc>=70?'B':acc>=50?'C':'D';
+  const gc={S:'#f9a8d4',A:'#86efac',B:'#93c5fd',C:'#fcd34d',D:'#fca5a5'};
+
+  overlay.innerHTML=`
+    <h1>결과</h1>
+    <div id="result-grade" style="color:${gc[grade]}">${grade}</div>
+    <div id="result-score">${score.toLocaleString()}</div>
+    <div id="result-stats">
+      정확도: ${acc}%<br>
+      최대 콤보: ${maxCombo}<br>
+      PERFECT: ${counts.perfect} &nbsp; GOOD: ${counts.good} &nbsp; MISS: ${counts.miss}
+    </div>
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="btn btn-purple" id="retry-btn">다시 하기</button>
+      <button class="btn btn-gray"   id="back-btn">메뉴로</button>
+    </div>
+  `;
+  gameWrap.style.display='none';
+  overlay.style.display='flex';
+
+  $('retry-btn')?.addEventListener('click',startPlay);
+  $('back-btn')?.addEventListener('click',()=>{ overlay.innerHTML=''; location.reload(); });
+}
+
+/* ════════════════════════════════════════════
+   이벤트
+════════════════════════════════════════════ */
+// 파일 선택
+dropzone.addEventListener('click',()=>fileInput.click());
+fileInput.addEventListener('change',e=>{
+  if(e.target.files[0]) loadAudio(e.target.files[0]);
+});
+
+// 드래그 앤 드롭
+dropzone.addEventListener('dragover',e=>{e.preventDefault();dropzone.classList.add('drag-over');});
+dropzone.addEventListener('dragleave',()=>dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop',e=>{
+  e.preventDefault(); dropzone.classList.remove('drag-over');
+  const f=e.dataTransfer.files[0];
+  if(f&&f.type.startsWith('audio/')) loadAudio(f);
+});
+
+// 버튼
+playBtn.addEventListener('click',()=>{
+  if(audioCtx?.state==='suspended') audioCtx.resume();
+  startPlay();
+});
+recBtn.addEventListener('click',()=>{
+  if(audioCtx?.state==='suspended') audioCtx.resume();
+  startRecord();
+});
+$('rec-stop').addEventListener('click',endRecord);
+
+// 채보 도움말
+chartHelpBtn.addEventListener('click',()=>{
+  chartHelp.style.display=chartHelp.style.display==='none'?'block':'none';
+});
+
+// 키보드
+document.addEventListener('keydown',e=>{
+  const key=e.key.toLowerCase();
+  if(!KEYS.includes(key)){ if(key==='escape'&&mode!=='idle') endRecord(); return; }
+  e.preventDefault();
+  if(e.repeat) return;
+  keyBtnEls[key]?.classList.add('pressed');
+  laneEls[key]?.classList.add('active');
+  onKey(key);
+});
+document.addEventListener('keyup',e=>{
+  const key=e.key.toLowerCase();
+  if(!KEYS.includes(key)) return;
+  keyBtnEls[key]?.classList.remove('pressed');
+  laneEls[key]?.classList.remove('active');
+});
+
+// 터치 버튼
+document.querySelectorAll('.key-btn').forEach(btn=>{
+  const key=btn.dataset.key;
+  btn.addEventListener('pointerdown',e=>{
+    e.preventDefault();
+    keyBtnEls[key]?.classList.add('pressed');
+    laneEls[key]?.classList.add('active');
+    onKey(key);
+  });
+  btn.addEventListener('pointerup',()=>{
+    keyBtnEls[key]?.classList.remove('pressed');
+    laneEls[key]?.classList.remove('active');
+  });
+});
+</script>
+</body>
+</html>
